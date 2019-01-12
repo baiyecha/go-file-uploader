@@ -2,6 +2,7 @@ package minio
 
 import (
 	"fmt"
+	"github.com/minio/minio-go"
 	. "github.com/wq1019/go-file-uploader"
 	"io"
 	"mime"
@@ -69,7 +70,8 @@ func (mu *minioUploader) Upload(fh FileHeader, extra string) (f *FileModel, err 
 	if exist, err := mu.s.FileExist(hashValue); exist && err == nil {
 		// 文件已经存在
 		file, err := mu.s.FileLoad(hashValue)
-		// load error
+		return file, err
+		/*// load error
 		if err != nil {
 			return nil, err
 		} else if file.Filename != fh.Filename {
@@ -84,7 +86,7 @@ func (mu *minioUploader) Upload(fh FileHeader, extra string) (f *FileModel, err 
 			err = mu.s.FileCreate(f)
 			return f, err
 		}
-		return file, nil
+		return file, nil*/
 	} else if err != nil {
 		return nil, err
 	}

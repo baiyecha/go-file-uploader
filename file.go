@@ -4,7 +4,7 @@ import "time"
 
 type FileModel struct {
 	Id        int64     `json:"id" gorm:"type:BIGINT AUTO_INCREMENT;PRIMARY_KEY;NOT NUll"`
-	Hash      string    `json:"hash" gorm:"INDEX;TYPE:CHAR(32)"`
+	Hash      string    `json:"hash" gorm:"UNIQUE_INDEX;TYPE:CHAR(32)"`
 	Format    string    `json:"format" gorm:"NOT NULL"`
 	Filename  string    `json:"filename" gorm:"NOT NULL"`
 	Size      int64     `json:"size" gorm:"NOT NULL"`
