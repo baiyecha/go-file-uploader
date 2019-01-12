@@ -14,7 +14,7 @@ func (s *dbStore) FileIsNotExistError(err error) bool {
 
 func (s *dbStore) FileLoad(hash string) (fileModel *FileModel, err error) {
 	fileModel = &FileModel{}
-	err = s.db.Where(FileModel{Hash: hash}).First(fileModel).Error
+	err = s.db.Where(FileModel{Hash: hash}).First(&fileModel).Error
 	if gorm.IsRecordNotFoundError(err) {
 		err = ErrFileNotExist
 	}
@@ -32,7 +32,7 @@ func (s *dbStore) FileExist(hash string) (bool, error) {
 }
 
 //
-//// ImageSave 方法会判断图片在数据库中是否已经存在如果存在直接放回 否则创建它
+//// ImageSave 方法会判断图片在数据库中是否已经存在如果存在直接返回 否则创建它
 //func (is *dbStore) ImageSave(image *Image) (storedImage *Image, exist bool, err error) {
 //	originDB := is.db
 //	is.db = is.db.Begin()

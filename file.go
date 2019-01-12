@@ -4,11 +4,11 @@ import "time"
 
 type FileModel struct {
 	Id        int64     `json:"id" gorm:"type:BIGINT AUTO_INCREMENT;PRIMARY_KEY;NOT NUll"`
-	Hash      string    `json:"hash" gorm:"primary_key;type:char(32)"`
-	Format    string    `json:"format" gorm:"not null"`
-	Filename  string    `json:"filename" gorm:"not null"`
-	Size      int64     `json:"size" gorm:"not null"`
-	Extra     string    `json:"extra" gorm:"not null;type:text"`
+	Hash      string    `json:"hash" gorm:"INDEX;TYPE:CHAR(32)"`
+	Format    string    `json:"format" gorm:"NOT NULL"`
+	Filename  string    `json:"filename" gorm:"NOT NULL"`
+	Size      int64     `json:"size" gorm:"NOT NULL"`
+	Extra     string    `json:"extra" gorm:"NOT NULL;TYPE:TEXT"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

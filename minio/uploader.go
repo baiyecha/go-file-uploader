@@ -2,7 +2,6 @@ package minio
 
 import (
 	"fmt"
-	"github.com/minio/minio-go"
 	. "github.com/wq1019/go-file-uploader"
 	"io"
 	"mime"
@@ -69,7 +68,23 @@ func (mu *minioUploader) Upload(fh FileHeader, extra string) (f *FileModel, err 
 
 	if exist, err := mu.s.FileExist(hashValue); exist && err == nil {
 		// 文件已经存在
-		return mu.s.FileLoad(hashValue)
+		file, err := mu.s.FileLoad(hashValue)
+		// load error
+		if err != nil {
+			return nil, err
+		} else if file.Filename != fh.Filename {
+			// 如果这个文件已经上传过了,但是用户上传时的 filename 不同则在表中重新创建一条记录
+			f = &FileModel{
+				Hash:     file.Hash,
+				Format:   file.Format,
+				Filename: fh.Filename,
+				Size:     file.Size,
+				Extra:    extra,
+			}
+			err = mu.s.FileCreate(f)
+			return f, err
+		}
+		return file, nil
 	} else if err != nil {
 		return nil, err
 	}
