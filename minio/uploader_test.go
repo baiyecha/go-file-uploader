@@ -1,11 +1,11 @@
 package minio
 
 import (
-	"testing"
 	"github.com/minio/minio-go"
+	. "github.com/wq1019/go-file-uploader"
 	"log"
-	. "github.com/zm-dev/go-file-uploader"
 	"os"
+	"testing"
 )
 
 var uploader Uploader

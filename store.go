@@ -1,9 +1,9 @@
 package go_file_uploader
 
 import (
+	"errors"
 	"mime"
 	"path/filepath"
-	"errors"
 )
 
 type Store interface {

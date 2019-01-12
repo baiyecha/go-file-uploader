@@ -12,4 +12,3 @@ func FromContext(ctx context.Context) (u Uploader, ok bool) {
 	u, ok = ctx.Value(uploaderKey{}).(Uploader)
 	return
 }
-

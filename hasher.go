@@ -1,11 +1,11 @@
 package go_file_uploader
 
 import (
-	"io"
 	"crypto/md5"
 	"encoding/hex"
-	"strings"
 	"errors"
+	"io"
+	"strings"
 )
 
 type HashFunc func(file io.ReadSeeker) (string, error)

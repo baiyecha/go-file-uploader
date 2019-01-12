@@ -1,11 +1,11 @@
 package go_file_uploader
 
 import (
-	"io"
 	"context"
 	"errors"
-	"time"
+	"io"
 	"net/url"
+	"time"
 )
 
 type FileHeader struct {

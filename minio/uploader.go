@@ -1,14 +1,14 @@
 package minio
 
 import (
-	"github.com/minio/minio-go"
-	"mime"
-	"io"
-	"path/filepath"
-	. "github.com/zm-dev/go-file-uploader"
-	"time"
-	"net/url"
 	"fmt"
+	"github.com/minio/minio-go"
+	. "github.com/wq1019/go-file-uploader"
+	"io"
+	"mime"
+	"net/url"
+	"path/filepath"
+	"time"
 )
 
 type minioUploader struct {
