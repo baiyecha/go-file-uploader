@@ -19,7 +19,12 @@ func SaveToStore(s Store, hashValue string, fh FileHeader, extra string) (fileMo
 	if ext == "jpeg" {
 		ext = "jpg"
 	}
-	fileModel = &FileModel{Hash: hashValue, Format: mime.TypeByExtension(ext), Filename: fh.Filename, Size: fh.Size, Extra: extra}
+	fileModel = &FileModel{
+		Hash: hashValue,
+		Format: mime.TypeByExtension(ext),
+		Filename: fh.Filename,
+		Size: fh.Size, Extra: extra,
+	}
 	err = s.FileCreate(fileModel)
 	return
 }

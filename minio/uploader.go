@@ -71,22 +71,6 @@ func (mu *minioUploader) Upload(fh FileHeader, extra string) (f *FileModel, err 
 		// 文件已经存在
 		file, err := mu.s.FileLoad(hashValue)
 		return file, err
-		/*// load error
-		if err != nil {
-			return nil, err
-		} else if file.Filename != fh.Filename {
-			// 如果这个文件已经上传过了,但是用户上传时的 filename 不同则在表中重新创建一条记录
-			f = &FileModel{
-				Hash:     file.Hash,
-				Format:   file.Format,
-				Filename: fh.Filename,
-				Size:     file.Size,
-				Extra:    extra,
-			}
-			err = mu.s.FileCreate(f)
-			return f, err
-		}
-		return file, nil*/
 	} else if err != nil {
 		return nil, err
 	}

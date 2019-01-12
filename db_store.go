@@ -22,7 +22,7 @@ func (s *dbStore) FileLoad(hash string) (fileModel *FileModel, err error) {
 }
 
 func (s *dbStore) FileCreate(fileModel *FileModel) error {
-	return s.db.Create(fileModel).Error
+	return s.db.Create(&fileModel).Error
 }
 
 func (s *dbStore) FileExist(hash string) (bool, error) {
