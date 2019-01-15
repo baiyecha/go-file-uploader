@@ -15,9 +15,15 @@ type FileHeader struct {
 }
 
 type Uploader interface {
+	// 普通上传
 	Upload(fh FileHeader, extra string) (f *FileModel, err error)
+	// 分片上传(暂时就这样写吧, 其实不应该这样写的)
+	UploadChunk(fh FileHeader, extra string) (f *FileModel, err error)
+	// 获取文件链接
 	PresignedGetObject(hashValue string, expires time.Duration, reqParams url.Values) (u *url.URL, err error)
+	// 读文件
 	ReadFile(hashValue string) (rf ReadFile, err error)
+	// Store
 	Store() Store
 }
 

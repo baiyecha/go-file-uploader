@@ -1,17 +1,19 @@
 package minio
 
 import (
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
 	"github.com/minio/minio-go"
 	. "github.com/wq1019/go-file-uploader"
 	"log"
 	"os"
 	"testing"
+	"time"
 )
 
 var uploader Uploader
 
 func TestMain(m *testing.M) {
-
 	minioClient, err := minio.New(
 		"59.111.58.150:9000",
 		"zm2018",
@@ -22,12 +24,20 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		log.Fatalf("minio client 创建失败! error: %+v", err)
 	}
-	uploader = NewMinioUploader(HashFunc(MD5HashFunc), minioClient, "test", Hash2StorageNameFunc(TwoCharsPrefixHash2StorageNameFunc))
+	store := NewDBStore(setupGorm())
+
+	uploader = NewMinioUploader(
+		HashFunc(MD5HashFunc),
+		minioClient,
+		store,
+		"test",
+		Hash2StorageNameFunc(TwoCharsPrefixHash2StorageNameFunc),
+	)
 	m.Run()
 }
 
 func TestMinioUploader_Upload(t *testing.T) {
-	filename := "/Users/taoyu/Desktop/2-4 章节总结.mp4"
+	filename := "./uploader.go"
 	fi, err := os.Stat(filename)
 	if err != nil {
 		log.Fatalln(err)
@@ -37,8 +47,35 @@ func TestMinioUploader_Upload(t *testing.T) {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	err = uploader.Upload(FileHeader{file.Name(), fi.Size(), file})
+	_, err = uploader.Upload(FileHeader{file.Name(), fi.Size(), file}, "")
 	if err != nil {
 		log.Fatalln(err)
+	}
+}
+
+func setupGorm() *gorm.DB {
+	var (
+		db  *gorm.DB
+		err error
+	)
+	for i := 0; i < 10; i++ {
+		db, err = gorm.Open("sqlite3", "cloud.db")
+		if err == nil {
+			autoMigrate(db)
+			return db
+		}
+		log.Println(err)
+		time.Sleep(2 * time.Second)
+	}
+	log.Fatalf("数据库链接失败！ error: %+v", err)
+	return nil
+}
+
+func autoMigrate(db *gorm.DB) {
+	err := db.AutoMigrate(
+		&FileModel{},
+	).Error
+	if err != nil {
+		log.Fatalf("AutoMigrate 失败！ error: %+v", err)
 	}
 }

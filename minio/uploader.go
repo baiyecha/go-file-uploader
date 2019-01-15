@@ -19,26 +19,20 @@ type minioUploader struct {
 	s           Store
 }
 
+func (mu *minioUploader) UploadChunk(fh FileHeader, extra string) (f *FileModel, err error) {
+	panic("分片上传暂时没有实现")
+}
+
 func (mu *minioUploader) saveToMinio(hashValue string, fh FileHeader) error {
 	name, err := mu.h2sn.Convent(hashValue)
 	if err != nil {
 		return fmt.Errorf("hash to storage name error. err:%+v", err)
 	}
+	// 跳转到文件的开头
 	_, err = fh.File.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
 	}
-
-	//obj, _ := mu.minioClient.GetObject(mu.bucketName, name, minio.GetObjectOptions{})
-	//_, err = obj.Stat()
-	//if err != nil {
-	//	if minio.ToErrorResponse(err).Code != "NoSuchKey" {
-	//		return nil, fmt.Errorf("minio client get object error. err:%+v", err)
-	//	}
-	//} else {
-	//	// 文件已经存在
-	//	return nil
-	//}
 
 	ext := filepath.Ext(fh.Filename)
 	// 在 apline 镜像中 mime.TypeByExtension 只能用 jpg
