@@ -3,6 +3,7 @@ package nos
 import (
 	"bytes"
 	"crypto/md5"
+	"errors"
 	"fmt"
 	"github.com/NetEase-Object-Storage/nos-golang-sdk/model"
 	"github.com/NetEase-Object-Storage/nos-golang-sdk/nosclient"
@@ -83,39 +84,39 @@ func (n *nosUploader) UploadChunk(fh FileHeader, extra string) (f *FileModel, er
 	} else if err != nil {
 		return nil, err
 	}
-
-	err = n.savePartToNos(hashValue, fh)
+	objectName, err := n.h2sn.Convent(hashValue)
 	if err != nil {
-		return nil, err
+		return nil, errors.New(fmt.Sprintf("hash to storage name error. err: %+v", err))
 	}
-	return SaveToStore(n.s, hashValue, fh, extra)
-}
-
-func (nu *nosUploader) savePartToNos(hashValue string, fh FileHeader) error {
-	name, err := nu.h2sn.Convent(hashValue)
-	if err != nil {
-		return fmt.Errorf("hash to storage name error. err: %+v", err)
-	}
-	// 跳转到文件的开头
-	_, err = fh.File.Seek(0, io.SeekStart)
-	if err != nil {
-		return err
-	}
-
 	ext := filepath.Ext(fh.Filename)
-
-	// 在 apline 镜像中 mime.TypeByExtension 只能用 jpg
 	if ext == "jpeg" {
 		ext = "jpg"
 	}
-	initRes, err := nu.initMultiUpload(name, ext)
+	// 获取 UploadId
+	initRes, err := n.initMultiUpload(objectName, ext)
+	if err != nil {
+		return nil, err
+	}
+	// 开始分块上传文件
+	err = n.savePartToNos(objectName, hashValue, initRes.UploadId, fh)
+	if err != nil {
+		return nil, err
+	}
+	// 保存到数据库
+	return SaveToStore(n.s, hashValue, fh, extra)
+}
+
+func (nu *nosUploader) savePartToNos(objectName, objectHash, uploadId string, fh FileHeader) error {
+	// 跳转到文件的开头
+	_, err := fh.File.Seek(0, io.SeekStart)
 	if err != nil {
 		return err
 	}
+
 	uploadPartRequest := &model.UploadPartRequest{
 		Bucket:   nu.bucketName,
-		Object:   name,
-		UploadId: initRes.UploadId,
+		Object:   objectName,
+		UploadId: uploadId,
 	}
 	var (
 		partNum int
@@ -133,11 +134,10 @@ func (nu *nosUploader) savePartToNos(hashValue string, fh FileHeader) error {
 		if err != nil || n == 0 {
 			break
 		}
-		hash := fmt.Sprintf("%x", md5hash.Sum(nil))
 		uploadPartRequest.PartSize = int64(readLen)
 		uploadPartRequest.PartNumber = partNum
 		uploadPartRequest.Content = buffer
-		uploadPartRequest.ContentMd5 = hash
+		uploadPartRequest.ContentMd5 = fmt.Sprintf("%x", md5hash.Sum(nil))
 		uploadPart, err := nu.client.UploadPart(uploadPartRequest)
 		if err != nil {
 			return err
@@ -149,10 +149,10 @@ func (nu *nosUploader) savePartToNos(hashValue string, fh FileHeader) error {
 	}
 	_, err = nu.client.CompleteMultiUpload(&model.CompleteMultiUploadRequest{
 		Bucket:    nu.bucketName,
-		Object:    name,
-		UploadId:  initRes.UploadId,
-		Parts:     etags,     // map: partnum, etag
-		ObjectMd5: hashValue, // big file md5
+		Object:    objectName,
+		UploadId:  uploadId,
+		Parts:     etags,      // map: partnum, etag
+		ObjectMd5: objectHash, // big file md5
 	})
 	return err
 }
