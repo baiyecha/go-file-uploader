@@ -35,6 +35,7 @@ func TestMain(m *testing.M) {
 		"zm-dev",
 		Hash2StorageNameFunc(TwoCharsPrefixHash2StorageNameFunc),
 		"nos-eastchina1.126.net",
+		"nos-eastchina1.126.net",
 	)
 	m.Run()
 }
@@ -58,7 +59,7 @@ func TestNosUploader_Upload(t *testing.T) {
 }
 
 func TestNosUploader_UploadChunk(t *testing.T) {
-	filename := "./uploader.go"
+	filename := "./1527580104.jpg"
 	fi, err := os.Stat(filename)
 	if err != nil {
 		log.Fatalln(err)
@@ -140,6 +141,7 @@ func setupGorm() *gorm.DB {
 		err error
 	)
 	for i := 0; i < 10; i++ {
+		//db, err = gorm.Open("sqlite3", "file::memory:?cache=shared")
 		db, err = gorm.Open("sqlite3", "cloud.db")
 		if err == nil {
 			autoMigrate(db)

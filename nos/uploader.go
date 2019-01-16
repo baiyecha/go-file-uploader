@@ -3,7 +3,6 @@ package nos
 import (
 	"bytes"
 	"crypto/md5"
-	"errors"
 	"fmt"
 	"github.com/NetEase-Object-Storage/nos-golang-sdk/model"
 	"github.com/NetEase-Object-Storage/nos-golang-sdk/nosclient"
@@ -19,18 +18,20 @@ import (
 )
 
 type nosUploader struct {
-	h          Hasher
-	client     *nosclient.NosClient
-	bucketName string
-	endPoint   string // 无奈
-	h2sn       Hash2StorageName
-	s          Store
+	h                Hasher
+	client           *nosclient.NosClient
+	bucketName       string
+	endPoint         string // 无奈
+	externalEndpoint string // 外网链接
+	h2sn             Hash2StorageName
+	s                Store
 }
 
 const (
 	protocol       = "https://"
 	AllowMaxUpload = 100 << 20 // 网易云规定普通上传接口最大只允许上传 100MB
-	ChunkSize      = 64 << 20  // 每片只允许 64MB
+	ChunkSize      = 100 << 20 // 每片只允许 100MB
+	MaxFileSize    = 1 << 40
 )
 
 func (n *nosUploader) initMultiUpload(object, ext string) (res *model.InitMultiUploadResult, err error) {
@@ -54,6 +55,9 @@ func (n *nosUploader) Upload(fh FileHeader, extra string) (f *FileModel, err err
 	hashValue, err := n.h.Hash(fh.File)
 	if err != nil {
 		return nil, err
+	}
+	if fh.Size > MaxFileSize {
+		return nil, fmt.Errorf("file size is too large")
 	}
 
 	if exist, err := n.s.FileExist(hashValue); exist && err == nil {
@@ -86,7 +90,7 @@ func (n *nosUploader) UploadChunk(fh FileHeader, extra string) (f *FileModel, er
 	}
 	objectName, err := n.h2sn.Convent(hashValue)
 	if err != nil {
-		return nil, errors.New(fmt.Sprintf("hash to storage name error. err: %+v", err))
+		return nil, fmt.Errorf("hash to storage name error. err: %+v", err)
 	}
 	ext := filepath.Ext(fh.Filename)
 	if ext == "jpeg" {
@@ -203,7 +207,7 @@ func (n *nosUploader) PresignedGetObject(hashValue string, expires time.Duration
 	if err != nil {
 		return nil, err
 	}
-	urlStr := protocol + n.bucketName + "." + n.endPoint + "/" + name
+	urlStr := protocol + n.bucketName + "." + n.externalEndpoint + "/" + name
 	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
@@ -243,8 +247,6 @@ func (rf *readFile) Close() error {
 	return rf.Body.Close()
 }
 
-// TODO
-// Deprecated: not be allow use.
 func (rf *readFile) Seek(offset int64, whence int) (int64, error) {
 	body, err := ioutil.ReadAll(rf.Body)
 	if err != nil {
@@ -274,9 +276,9 @@ func (rf *readFile) Stat() (fi *FileInfo, err error) {
 	return &FileInfo{LastModified: time.Now(), Size: int64(len(body)), ContentType: ""}, nil
 }
 
-func NewNosUploader(h Hasher, client *nosclient.NosClient, s Store, bucketName string, h2sn Hash2StorageName, endPrint string) Uploader {
+func NewNosUploader(h Hasher, client *nosclient.NosClient, s Store, bucketName string, h2sn Hash2StorageName, endPrint, externalEndpoint string) Uploader {
 	if h2sn == nil {
 		h2sn = Hash2StorageNameFunc(DefaultHash2StorageNameFunc)
 	}
-	return &nosUploader{h: h, client: client, bucketName: bucketName, h2sn: h2sn, s: s, endPoint: endPrint}
+	return &nosUploader{h: h, client: client, bucketName: bucketName, h2sn: h2sn, s: s, endPoint: endPrint, externalEndpoint: externalEndpoint}
 }
