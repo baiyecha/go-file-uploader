@@ -207,7 +207,7 @@ func (n *nosUploader) PresignedGetObject(hashValue string, expires time.Duration
 	if err != nil {
 		return nil, err
 	}
-	urlStr := protocol + n.bucketName + "." + n.externalEndpoint + "/" + name
+	urlStr := /*protocol + n.bucketName + "." +*/ n.externalEndpoint + "/" + name
 	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
