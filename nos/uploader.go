@@ -132,9 +132,11 @@ func (nu *nosUploader) UploadChunk(ch ChunkHeader, extra string) (fileModel *Fil
 			return nil, "", fmt.Errorf("合并分片失败: %+v", err)
 		}
 		var (
-			etags = make([]model.UploadPart, 0, 10)
+			etags        = make([]model.UploadPart, 0, 10)
+			realFileSize int64
 		)
 		for _, part := range completeResult.Parts {
+			realFileSize += int64(part.Size)
 			etags = append(etags, model.UploadPart{
 				PartNumber: part.PartNumber,
 				Etag:       part.Etag,
@@ -154,7 +156,7 @@ func (nu *nosUploader) UploadChunk(ch ChunkHeader, extra string) (fileModel *Fil
 		// 保存到数据库
 		fModel, err := SaveToStore(nu.s, ch.OriginFileHash, FileHeader{
 			Filename: ch.OriginFilename,
-			Size:     ch.OriginFileSize,
+			Size:     realFileSize,
 		}, extra)
 		if err != nil {
 			return nil, "", fmt.Errorf("文件保存到数据库失败: %+v", err)
