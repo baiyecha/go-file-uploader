@@ -26,12 +26,15 @@ type nosUploader struct {
 	s                Store
 }
 
+type readFile struct {
+	*model.NOSObject
+}
+
 const (
 	AllowMaxUpload = 100 << 20 // 网易云规定普通上传接口最大只允许上传 100MB
-	ChunkMaxSize   = 100 << 20 // 每片只允许 100MB
+	ChunkMaxSize   = 100 << 20 // 每片最大 100MB
 	ChunkMinSize   = 16 << 10  // 除最后一片外每片最小必须是 16KB
-	MaxFileSize    = 1 << 40   // 最大文件大小
-	MaxChunkNumber = 10000     // 最大片的数量
+	MaxChunkNumber = 1000      // 最大片的数量
 )
 
 func (nu *nosUploader) Upload(fh FileHeader, extra string) (f *FileModel, err error) {
@@ -40,7 +43,7 @@ func (nu *nosUploader) Upload(fh FileHeader, extra string) (f *FileModel, err er
 		return nil, err
 	}
 
-	if fh.Size > MaxFileSize {
+	if fh.Size > AllowMaxUpload {
 		return nil, fmt.Errorf("file size is too large")
 	}
 
@@ -60,7 +63,6 @@ func (nu *nosUploader) Upload(fh FileHeader, extra string) (f *FileModel, err er
 }
 
 func (nu *nosUploader) UploadChunk(ch ChunkHeader, extra string) (fileModel *FileModel, uploadId string, err error) {
-	// 对源文件 hash 改造成 XX/XXXXXXXX 形式作为文件名
 	objectName, err := nu.h2sn.Convent(ch.OriginFileHash)
 	if err != nil {
 		return nil, "", fmt.Errorf("hash to storage name error. err: %+v", err)
@@ -216,10 +218,6 @@ func (nu *nosUploader) ReadFile(hashValue string) (rf ReadFile, err error) {
 
 func (nu *nosUploader) Store() Store {
 	return nu.s
-}
-
-type readFile struct {
-	*model.NOSObject
 }
 
 func (rf *readFile) Read(p []byte) (n int, err error) {

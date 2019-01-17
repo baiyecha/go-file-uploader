@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestNosUploader_Upload(t *testing.T) {
-	filename := "./go1.11.linux-amd64.tar.gz"
+	filename := "./b.jpg"
 	fi, err := os.Stat(filename)
 	if err != nil {
 		log.Fatalln(err)
@@ -68,7 +68,7 @@ func TestNosUploader_Upload(t *testing.T) {
 }
 
 func TestNosUploader_UploadChunk(t *testing.T) {
-	filename := "./b.apk"
+	filename := "./c.jpg"
 	file, err := os.Open(filename)
 	if err != nil {
 		log.Fatalln(err)
@@ -133,7 +133,7 @@ func TestNosUploader_UploadChunk(t *testing.T) {
 }
 
 func TestNosUploader_ReadChunk(t *testing.T) {
-	filename := "./b.apk"
+	filename := "./c.jpg"
 	inputFile, err := os.Open(filename)
 	if err != nil {
 		log.Fatalln(err)
@@ -203,50 +203,37 @@ func TestNosUploader_ReadChunk(t *testing.T) {
 }
 
 func TestNosUploader_PresignedGetObject(t *testing.T) {
-	url, err := uploader.PresignedGetObject("c40bc37c94a906e506f90e61374b46ef", time.Duration(10), nil)
+	_, err := uploader.PresignedGetObject("c40bc37c94a906e506f90e61374b46ef", time.Duration(10), nil)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	fmt.Println(url.String())
 }
 
 func TestNosUploader_ReadFile(t *testing.T) {
-	fileSize := 2357
-	rf, err := uploader.ReadFile("c40bc37c94a906e506f90e61374b46ef")
+	filename := "./a.jpg"
+	inputFile, err := os.Open(filename)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	bytes1 := make([]byte, fileSize)
-	_, err = rf.Read(bytes1)
+	hashValue, err := MD5HashFunc(inputFile)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	f, err := os.OpenFile("./tmp.txt", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
+	outFileName := "out_1" + path.Ext(filename)
+	removeFiles(outFileName)
+	outputFile, err := os.OpenFile(outFileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0644)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	_, err = f.Write(bytes1)
+	rf, err := uploader.ReadFile(hashValue)
 	if err != nil {
 		log.Fatalln(err)
 	}
-}
-
-func TestReadFile_ReadAt(t *testing.T) {
-	fileSize := 2357
-	rf, err := uploader.ReadFile("c40bc37c94a906e506f90e61374b46ef")
+	bytes, err := ioutil.ReadAll(rf)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	bytes2 := make([]byte, fileSize)
-	_, err = rf.ReadAt(bytes2, 0)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	f, err := os.OpenFile("./tmp1.txt", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0644)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	_, err = f.Write(bytes2)
+	_, err = outputFile.Write(bytes)
 	if err != nil {
 		log.Fatalln(err)
 	}
