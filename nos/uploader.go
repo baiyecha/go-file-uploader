@@ -2,7 +2,6 @@ package nos
 
 import (
 	"bytes"
-	"crypto/md5"
 	"fmt"
 	"github.com/NetEase-Object-Storage/nos-golang-sdk/model"
 	"github.com/NetEase-Object-Storage/nos-golang-sdk/nosclient"
@@ -28,180 +27,162 @@ type nosUploader struct {
 }
 
 const (
-	protocol       = "https://"
 	AllowMaxUpload = 100 << 20 // 网易云规定普通上传接口最大只允许上传 100MB
-	ChunkSize      = 100 << 20 // 每片只允许 100MB
-	MaxFileSize    = 1 << 40
+	ChunkMaxSize   = 100 << 20 // 每片只允许 100MB
+	ChunkMinSize   = 16 << 10  // 除最后一片外每片最小必须是 16KB
+	MaxFileSize    = 1 << 40   // 最大文件大小
+	MaxChunkNumber = 10000     // 最大片的数量
 )
 
-func (n *nosUploader) initMultiUpload(object, ext string) (res *model.InitMultiUploadResult, err error) {
-	res, err = n.client.InitMultiUpload(&model.InitMultiUploadRequest{
-		Bucket: n.bucketName,
-		Object: object,
-		Metadata: &model.ObjectMetadata{
-			// 自定义 meta data
-			Metadata: map[string]string{
-				nosconst.CONTENT_TYPE: mime.TypeByExtension(ext),
-			},
-		},
-	})
+func (nu *nosUploader) Upload(fh FileHeader, extra string) (f *FileModel, err error) {
+	hashValue, err := nu.h.Hash(fh.File)
 	if err != nil {
 		return nil, err
 	}
-	return res, nil
-}
 
-func (n *nosUploader) Upload(fh FileHeader, extra string) (f *FileModel, err error) {
-	hashValue, err := n.h.Hash(fh.File)
-	if err != nil {
-		return nil, err
-	}
 	if fh.Size > MaxFileSize {
 		return nil, fmt.Errorf("file size is too large")
 	}
 
-	if exist, err := n.s.FileExist(hashValue); exist && err == nil {
+	if exist, err := nu.s.FileExist(hashValue); exist && err == nil {
 		// 文件已经存在
-		file, err := n.s.FileLoad(hashValue)
+		file, err := nu.s.FileLoad(hashValue)
 		return file, err
 	} else if err != nil {
 		return nil, err
 	}
 
-	err = n.saveStreamToNos(hashValue, fh)
+	err = nu.saveStreamToNos(hashValue, fh)
 	if err != nil {
 		return nil, err
 	}
-	return SaveToStore(n.s, hashValue, fh, extra)
+	return SaveToStore(nu.s, hashValue, fh, extra)
 }
 
-func (n *nosUploader) UploadChunk(fh FileHeader, extra string) (f *FileModel, err error) {
-	hashValue, err := n.h.Hash(fh.File)
+func (nu *nosUploader) UploadChunk(ch ChunkHeader, extra string) (fileModel *FileModel, uploadId string, err error) {
+	// 对源文件 hash 改造成 XX/XXXXXXXX 形式作为文件名
+	objectName, err := nu.h2sn.Convent(ch.OriginFileHash)
 	if err != nil {
-		return nil, err
+		return nil, "", fmt.Errorf("hash to storage name error. err: %+v", err)
 	}
-
-	if exist, err := n.s.FileExist(hashValue); exist && err == nil {
-		// 文件已经存在
-		file, err := n.s.FileLoad(hashValue)
-		return file, err
-	} else if err != nil {
-		return nil, err
+	// 判断有没有传 uploadID
+	if ch.UploadId == "" {
+		ext := filepath.Ext(ch.OriginFilename)
+		if ext == "jpeg" {
+			ext = "jpg"
+		}
+		// 第一次上传时需要获取 UploadId, 以后每次传分块时都要带上这个 uploadId
+		initRes, err := nu.initChunkUpload(objectName, ext)
+		if err != nil {
+			return nil, "", err
+		}
+		// chunk 上传完成后返回 uploadID 以便下次上传时使用
+		ch.UploadId = initRes.UploadId
 	}
-	objectName, err := n.h2sn.Convent(hashValue)
-	if err != nil {
-		return nil, fmt.Errorf("hash to storage name error. err: %+v", err)
-	}
-	ext := filepath.Ext(fh.Filename)
-	if ext == "jpeg" {
-		ext = "jpg"
-	}
-	// 获取 UploadId
-	initRes, err := n.initMultiUpload(objectName, ext)
-	if err != nil {
-		return nil, err
-	}
-	// 开始分块上传文件
-	err = n.savePartToNos(objectName, hashValue, initRes.UploadId, fh)
-	if err != nil {
-		return nil, err
-	}
-	// 保存到数据库
-	return SaveToStore(n.s, hashValue, fh, extra)
-}
-
-func (nu *nosUploader) savePartToNos(objectName, objectHash, uploadId string, fh FileHeader) error {
+	// 上传分片
 	// 跳转到文件的开头
-	_, err := fh.File.Seek(0, io.SeekStart)
+	_, err = ch.ChunkContent.Seek(0, io.SeekStart)
 	if err != nil {
-		return err
+		return nil, "", err
+	}
+	// 读取分片
+	contentBytes, err := ioutil.ReadAll(ch.ChunkContent)
+	if err != nil {
+		return nil, "", err
+	}
+	// 获取分片长度
+	contentLen := int64(len(contentBytes))
+	if contentLen <= 0 {
+		return nil, "", fmt.Errorf("分片读取失败")
+	}
+	if contentLen > ChunkMaxSize {
+		return nil, "", fmt.Errorf("分片太大, 不允许上传")
+	}
+	if ch.IsLastChunk == false && contentLen < ChunkMinSize {
+		return nil, "", fmt.Errorf("分片太小, 不允许上传")
+	}
+	if ch.ChunkNumber > MaxChunkNumber {
+		return nil, "", fmt.Errorf("分片数量超过 %d, 不允许上传", MaxChunkNumber)
+	}
+	chunkHashValue, err := nu.h.Hash(ch.ChunkContent)
+	if err != nil {
+		return nil, "", fmt.Errorf("分片 Hash 计算失败: %+v", err)
+	}
+	_, err = nu.client.UploadPart(&model.UploadPartRequest{
+		Bucket:     nu.bucketName,
+		Object:     objectName,
+		UploadId:   ch.UploadId,
+		PartSize:   contentLen,
+		PartNumber: ch.ChunkNumber,
+		Content:    contentBytes,
+		ContentMd5: chunkHashValue,
+	})
+	if err != nil {
+		return nil, "", fmt.Errorf("分片上传失败: %+v", err)
+	}
+	// 如果是最后一次上传分片, 则在最后一片上传完成后合并文件
+	if ch.IsLastChunk {
+		completeResult, err := nu.client.ListUploadParts(&model.ListUploadPartsRequest{
+			Bucket:   nu.bucketName,
+			Object:   objectName,
+			UploadId: ch.UploadId,
+			MaxParts: 1000,
+		})
+		if err != nil {
+			return nil, "", fmt.Errorf("合并分片失败: %+v", err)
+		}
+		var (
+			etags = make([]model.UploadPart, 0, 10)
+		)
+		for _, part := range completeResult.Parts {
+			etags = append(etags, model.UploadPart{
+				PartNumber: part.PartNumber,
+				Etag:       part.Etag,
+			})
+		}
+		if len(etags) > 0 {
+			_, err = nu.client.CompleteMultiUpload(&model.CompleteMultiUploadRequest{
+				Bucket:    nu.bucketName,
+				Object:    objectName,
+				UploadId:  ch.UploadId,
+				Parts:     etags,             // map: partNumber, etag
+				ObjectMd5: ch.OriginFileHash, // big file md5
+			})
+		} else {
+			return nil, "", fmt.Errorf("ons 分片读取失败")
+		}
+		// 保存到数据库
+		fModel, err := SaveToStore(nu.s, ch.OriginFileHash, FileHeader{
+			Filename: ch.OriginFilename,
+			Size:     ch.OriginFileSize,
+		}, extra)
+		if err != nil {
+			return nil, "", fmt.Errorf("文件保存到数据库失败: %+v", err)
+		}
+		// 最后一次返回 fModel, uploadID 可以不用返回
+		return fModel, ch.UploadId, nil
+	} else {
+		return nil, ch.UploadId, nil
+	}
+}
+
+func (nu *nosUploader) ReadChunk(hashValue, rangeValue string) (rf ReadFile, err error) {
+	objectName, err := nu.h2sn.Convent(hashValue)
+	if err != nil {
+		return
 	}
 
-	uploadPartRequest := &model.UploadPartRequest{
+	obj, err := nu.client.GetObject(&model.GetObjectRequest{
 		Bucket:   nu.bucketName,
 		Object:   objectName,
-		UploadId: uploadId,
-	}
-	var (
-		partNum int
-		etags   = make([]model.UploadPart, 0, 10)
-	)
-	for {
-		buffer := make([]byte, ChunkSize)
-		partNum++
-		readLen, err := fh.File.Read(buffer)
-		if err != nil || readLen == 0 {
-			break
-		}
-		md5hash := md5.New()
-		n, err := md5hash.Write(buffer[:readLen])
-		if err != nil || n == 0 {
-			break
-		}
-		uploadPartRequest.PartSize = int64(readLen)
-		uploadPartRequest.PartNumber = partNum
-		uploadPartRequest.Content = buffer
-		uploadPartRequest.ContentMd5 = fmt.Sprintf("%x", md5hash.Sum(nil))
-		uploadPart, err := nu.client.UploadPart(uploadPartRequest)
-		if err != nil {
-			return err
-		}
-		etags = append(etags, model.UploadPart{
-			PartNumber: partNum,
-			Etag:       uploadPart.Etag,
-		})
-	}
-	_, err = nu.client.CompleteMultiUpload(&model.CompleteMultiUploadRequest{
-		Bucket:    nu.bucketName,
-		Object:    objectName,
-		UploadId:  uploadId,
-		Parts:     etags,      // map: partnum, etag
-		ObjectMd5: objectHash, // big file md5
-	})
-	return err
-}
-
-func (n *nosUploader) saveStreamToNos(hashValue string, fh FileHeader) error {
-	name, err := n.h2sn.Convent(hashValue)
-	if err != nil {
-		return fmt.Errorf("hash to storage name error. err: %+v", err)
-	}
-	// 跳转到文件的开头
-	_, err = fh.File.Seek(0, io.SeekStart)
-	if err != nil {
-		return err
-	}
-	if fh.Size > AllowMaxUpload {
-		return fmt.Errorf("file size is too large")
-	}
-	ext := filepath.Ext(fh.Filename)
-	// 在 apline 镜像中 mime.TypeByExtension 只能用 jpg
-	if ext == "jpeg" {
-		ext = "jpg"
-	}
-	// Nos 只允许 最大 100MB 的文件
-	_, err = n.client.PutObjectByStream(&model.PutObjectRequest{
-		Bucket: n.bucketName,
-		Object: name,
-		Body:   fh.File,
-		Metadata: &model.ObjectMetadata{
-			ContentLength: fh.Size,
-			Metadata: map[string]string{
-				nosconst.CONTENT_TYPE: mime.TypeByExtension(ext),
-			},
-		},
+		ObjRange: rangeValue,
 	})
 	if err != nil {
-		return fmt.Errorf("nos client put object stream error. err: %+v", err)
+		return
 	}
-
-	return nil
+	return &readFile{obj}, nil
 }
 
-// 网易云的对象存储暂时不知道怎么设置过期时间
-// 而且这里官方 API 居然没有提供这种方法
-// endPoint 还是 TM 私有变量....
-// 不知道是哪个垃圾网易云程序员写的代码
 func (n *nosUploader) PresignedGetObject(hashValue string, expires time.Duration, reqParams url.Values) (u *url.URL, err error) {
 	name, err := n.h2sn.Convent(hashValue)
 	if err != nil {
@@ -215,13 +196,13 @@ func (n *nosUploader) PresignedGetObject(hashValue string, expires time.Duration
 	return req.URL, nil
 }
 
-func (n *nosUploader) ReadFile(hashValue string) (rf ReadFile, err error) {
-	name, err := n.h2sn.Convent(hashValue)
+func (nu *nosUploader) ReadFile(hashValue string) (rf ReadFile, err error) {
+	name, err := nu.h2sn.Convent(hashValue)
 	if err != nil {
 		return
 	}
-	obj, err := n.client.GetObject(&model.GetObjectRequest{
-		Bucket: n.bucketName,
+	obj, err := nu.client.GetObject(&model.GetObjectRequest{
+		Bucket: nu.bucketName,
 		Object: name,
 	})
 	if err != nil {
@@ -231,8 +212,8 @@ func (n *nosUploader) ReadFile(hashValue string) (rf ReadFile, err error) {
 	return &readFile{obj}, nil
 }
 
-func (n *nosUploader) Store() Store {
-	return n.s
+func (nu *nosUploader) Store() Store {
+	return nu.s
 }
 
 type readFile struct {
@@ -265,15 +246,61 @@ func (rf *readFile) ReadAt(p []byte, off int64) (n int, err error) {
 	return reader.ReadAt(p, off)
 }
 
-// TODO
-// Deprecated: not be allow use.
-func (rf *readFile) Stat() (fi *FileInfo, err error) {
-	fi = &FileInfo{}
-	body, err := ioutil.ReadAll(rf.Body)
+func (rf *readFile) Stat() (fileInfo *FileInfo, err error) {
+	return nil, fmt.Errorf("nos client does not support access to fileinfo")
+}
+
+func (nu *nosUploader) initChunkUpload(objectName, ext string) (uploadResult *model.InitMultiUploadResult, err error) {
+	uploadResult, err = nu.client.InitMultiUpload(&model.InitMultiUploadRequest{
+		Bucket: nu.bucketName,
+		Object: objectName,
+		Metadata: &model.ObjectMetadata{
+			Metadata: map[string]string{
+				nosconst.CONTENT_TYPE: mime.TypeByExtension(ext),
+			},
+		},
+	})
 	if err != nil {
 		return nil, err
 	}
-	return &FileInfo{LastModified: time.Now(), Size: int64(len(body)), ContentType: ""}, nil
+	return uploadResult, nil
+}
+
+func (nu *nosUploader) saveStreamToNos(hashValue string, fh FileHeader) error {
+	name, err := nu.h2sn.Convent(hashValue)
+	if err != nil {
+		return fmt.Errorf("hash to storage name error. err: %+v", err)
+	}
+	// 跳转到文件的开头
+	_, err = fh.File.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+	if fh.Size > AllowMaxUpload {
+		return fmt.Errorf("file size is too large")
+	}
+	ext := filepath.Ext(fh.Filename)
+	// 在 apline 镜像中 mime.TypeByExtension 只能用 jpg
+	if ext == "jpeg" {
+		ext = "jpg"
+	}
+	// Nos 只允许 最大 100MB 的文件
+	_, err = nu.client.PutObjectByStream(&model.PutObjectRequest{
+		Bucket: nu.bucketName,
+		Object: name,
+		Body:   fh.File,
+		Metadata: &model.ObjectMetadata{
+			ContentLength: fh.Size,
+			Metadata: map[string]string{
+				nosconst.CONTENT_TYPE: mime.TypeByExtension(ext),
+			},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("nos client put object stream error. err: %+v", err)
+	}
+
+	return nil
 }
 
 func NewNosUploader(h Hasher, client *nosclient.NosClient, s Store, bucketName string, h2sn Hash2StorageName, endPrint, externalEndpoint string) Uploader {

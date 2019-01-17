@@ -9,22 +9,35 @@ import (
 )
 
 type FileHeader struct {
-	Filename string
-	Size     int64
-	File     io.ReadSeeker
+	Filename string        // file name
+	Size     int64         // file size
+	File     io.ReadSeeker // file body
+}
+
+type ChunkHeader struct {
+	ChunkNumber    int           // 分片 ID
+	UploadId       string        // 同一个对象的分块上传都要携带该 uploadId
+	OriginFilename string        // 对象的名称
+	OriginFileHash string        // 对象 Hash
+	OriginFileSize int64         // 对象 Size
+	IsLastChunk    bool          // 是否是最后一个分片
+	ChunkContent   io.ReadSeeker // 分片内容
+	ChunkCount     int           // 分片数量
 }
 
 type Uploader interface {
 	// 普通上传
 	Upload(fh FileHeader, extra string) (f *FileModel, err error)
-	// 分片上传(暂时就这样写吧, 其实不应该这样写的)
-	UploadChunk(fh FileHeader, extra string) (f *FileModel, err error)
 	// 获取文件链接
 	PresignedGetObject(hashValue string, expires time.Duration, reqParams url.Values) (u *url.URL, err error)
 	// 读文件
 	ReadFile(hashValue string) (rf ReadFile, err error)
 	// Store
 	Store() Store
+	// 分片上传
+	UploadChunk(ch ChunkHeader, extra string) (f *FileModel, uploadId string, err error)
+	// 分片读取 (Range)
+	ReadChunk(hashValue, rangeValue string) (rf ReadFile, err error)
 }
 
 type FileInfo struct {

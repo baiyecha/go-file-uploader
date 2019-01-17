@@ -19,40 +19,16 @@ type minioUploader struct {
 	s           Store
 }
 
-func (mu *minioUploader) UploadChunk(fh FileHeader, extra string) (f *FileModel, err error) {
-	panic("分片上传暂时没有实现")
+type readFile struct {
+	*minio.Object
 }
 
-func (mu *minioUploader) saveToMinio(hashValue string, fh FileHeader) error {
-	name, err := mu.h2sn.Convent(hashValue)
-	if err != nil {
-		return fmt.Errorf("hash to storage name error. err:%+v", err)
-	}
-	// 跳转到文件的开头
-	_, err = fh.File.Seek(0, io.SeekStart)
-	if err != nil {
-		return err
-	}
+func (mu *minioUploader) UploadChunk(ch ChunkHeader, extra string) (f *FileModel, uploadId string, err error) {
+	panic("暂时没有实现")
+}
 
-	ext := filepath.Ext(fh.Filename)
-	// 在 apline 镜像中 mime.TypeByExtension 只能用 jpg
-	if ext == "jpeg" {
-		ext = "jpg"
-	}
-
-	_, err = mu.minioClient.PutObject(
-		mu.bucketName,
-		name,
-		fh.File,
-		fh.Size,
-		minio.PutObjectOptions{ContentType: mime.TypeByExtension(ext)},
-	)
-
-	if err != nil {
-		return fmt.Errorf("minio client put object error. err:%+v", err)
-	}
-
-	return nil
+func (mu *minioUploader) ReadChunk(hashValue, rangeValue string) (rf ReadFile, err error) {
+	panic("暂时没有实现")
 }
 
 func (mu *minioUploader) Upload(fh FileHeader, extra string) (f *FileModel, err error) {
@@ -89,10 +65,6 @@ func (mu *minioUploader) Store() Store {
 	return mu.s
 }
 
-type readFile struct {
-	*minio.Object
-}
-
 func (rf *readFile) Stat() (*FileInfo, error) {
 	info, err := rf.Object.Stat()
 	if err != nil {
@@ -115,6 +87,38 @@ func (mu *minioUploader) ReadFile(hashValue string) (rf ReadFile, err error) {
 		return
 	}
 	return &readFile{obj}, nil
+}
+
+func (mu *minioUploader) saveToMinio(hashValue string, fh FileHeader) error {
+	name, err := mu.h2sn.Convent(hashValue)
+	if err != nil {
+		return fmt.Errorf("hash to storage name error. err:%+v", err)
+	}
+	// 跳转到文件的开头
+	_, err = fh.File.Seek(0, io.SeekStart)
+	if err != nil {
+		return err
+	}
+
+	ext := filepath.Ext(fh.Filename)
+	// 在 apline 镜像中 mime.TypeByExtension 只能用 jpg
+	if ext == "jpeg" {
+		ext = "jpg"
+	}
+
+	_, err = mu.minioClient.PutObject(
+		mu.bucketName,
+		name,
+		fh.File,
+		fh.Size,
+		minio.PutObjectOptions{ContentType: mime.TypeByExtension(ext)},
+	)
+
+	if err != nil {
+		return fmt.Errorf("minio client put object error. err:%+v", err)
+	}
+
+	return nil
 }
 
 func NewMinioUploader(h Hasher, minioClient *minio.Client, s Store, bucketName string, h2sn Hash2StorageName) Uploader {
