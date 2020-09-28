@@ -1,7 +1,6 @@
-module github.com/wq1019/go-file-uploader
+module github.com/baiyecha/go-file-uploader
 
 require (
-	github.com/NetEase-Object-Storage/nos-golang-sdk v0.0.0-20171031020902-cc8892cb2b05
 	github.com/go-ini/ini v1.41.0 // indirect
 	github.com/go-sql-driver/mysql v1.4.1 // indirect
 	github.com/jinzhu/gorm v1.9.2

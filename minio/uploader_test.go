@@ -1,14 +1,15 @@
 package minio
 
 import (
-	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/sqlite"
-	"github.com/minio/minio-go"
-	. "github.com/wq1019/go-file-uploader"
 	"log"
 	"os"
 	"testing"
 	"time"
+
+	. "github.com/baiyecha/go-file-uploader"
+	"github.com/jinzhu/gorm"
+	_ "github.com/jinzhu/gorm/dialects/sqlite"
+	"github.com/minio/minio-go"
 )
 
 var uploader Uploader
